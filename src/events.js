@@ -21,6 +21,32 @@ function createRouter(db) {
   // });
 
     let token=0;
+    router.post('/signup/:login&:password', function (req, res, next) {
+        db.query(
+            'INSERT INTO users (login, password) VALUES (?,?)',
+            [req.params.login, req.params.password],
+            (error, results) => {
+                if (error) {
+                    if(error.errno===1062)
+                    {
+                        results=0;
+                        res.status(200).json(results);
+                    }
+                    else
+                    {
+                        console.log(error);
+                        res.status(500).json({status: 'error'});
+                    }
+                } else {
+                    console.log(results);
+                    token=Math.floor(Math.random() * (1000 - 1) + 1);
+                    results=token;
+                    res.status(200).json(results);
+                }
+            }
+        );
+    });
+
     router.post('/login/:login&:password', function (req, res, next) {
         db.query(
             'SELECT id, login, password FROM users WHERE login=?',
@@ -47,23 +73,30 @@ function createRouter(db) {
         );
     });
 
-  router.get('/characters', function (req, res, next) {
-    db.query(
-      // 'SELECT id, name, element_id, region_id, rarity FROM characters ORDER BY rarity',
-      'SELECT characters.id, characters.name, characters.rarity, elements.element_name, regions.region_name FROM characters JOIN (regions, elements) ON (characters.region_id = regions.id AND characters.element_id = elements.id) ORDER BY characters.name',
-      (error, results) => {
-        if (error) {
-          console.log(error);
-          res.status(500).json({status: 'error'});
-        } else {
-            console.log(results);
-          res.status(200).json(results);
-        }
-      }
-    );
+  router.get('/characters/:token', function (req, res, next) {
+    if(req.params.token && parseInt(req.params.token)===token)
+    {
+        db.query(
+            'SELECT characters.id, characters.name, characters.rarity, elements.element_name, regions.region_name FROM characters JOIN (regions, elements) ON (characters.region_id = regions.id AND characters.element_id = elements.id) ORDER BY characters.name',
+            (error, results) => {
+                if (error) {
+                    console.log(error);
+                    res.status(500).json({status: 'error'});
+                } else {
+                    console.log(results);
+                    res.status(200).json(results);
+                }
+            }
+        );
+    }
+    else {
+        console.log(token+' '+req.params.token);
+        res.status(200).json(-1);
+    }
+
   });
 
-  let sql="SELECT characters.id, characters.name, characters.rarity, elements.element_name, regions.region_name, " +
+  let charInfoSql="SELECT characters.id, characters.name, characters.rarity, elements.element_name, regions.region_name, " +
       "max(case when material_types.type_name = 'Primary Material' then materials.material_name end) 'primary_material', " +
       "max(case when material_types.type_name = 'Elemental Stone' then materials.material_name end) 'elemental_stone', " +
       "max(case when material_types.type_name = 'Local Material' then materials.material_name end) 'local_material', " +
@@ -77,21 +110,80 @@ function createRouter(db) {
       "AND characters.id = character_materials.character_id AND character_materials.material_id = materials.id AND materials.type_id = material_types.id)" +
       "WHERE characters.id=?"
 
-  router.get('/character/:id', function (req, res, next) {
-        db.query(
-            sql,
-            [req.params.id],
-            (error, results) => {
-                if (error) {
-                    console.log(error);
-                    res.status(500).json({status: 'error'});
-                } else {
-                    console.log(results);
-                    res.status(200).json(results);
-                }
-            }
-        );
-      //console.log(req.params.id);
+  let userMatSql="SELECT"+
+        "max(case when material_purposes.purpose_name = 'lvl' AND material_types.type_name = 'EXP Book' then user_characters_materials.material_count end) 'lvl__exp_book', " +
+        "max(case when material_purposes.purpose_name = 'lvl' AND material_types.type_name = 'Mora' then user_characters_materials.material_count end) 'lvl__mora', " +
+
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Primary Material' AND qualities.quality_name = 'q1' then user_characters_materials.material_count end) 'ascension__primary_material__q1', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Primary Material' AND qualities.quality_name = 'q2' then user_characters_materials.material_count end) 'ascension__primary_material__q2', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Primary Material' AND qualities.quality_name = 'q3' then user_characters_materials.material_count end) 'ascension__primary_material__q3', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Primary Material' AND qualities.quality_name = 'q4' then user_characters_materials.material_count end) 'ascension__primary_material__q4', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Secondary Material' AND qualities.quality_name = 'q1' then user_characters_materials.material_count end) 'ascension__secondary_material__q1', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Secondary Material' AND qualities.quality_name = 'q2' then user_characters_materials.material_count end) 'ascension__secondary_material__q2', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Secondary Material' AND qualities.quality_name = 'q3' then user_characters_materials.material_count end) 'ascension__secondary_material__q3', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Elemental Stone' then user_characters_materials.material_count end) 'ascension__elemental_stone', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Local Material' then user_characters_materials.material_count end) 'ascension__local_material', " +
+        "max(case when material_purposes.purpose_name = 'ascension' AND material_types.type_name = 'Mora' then user_characters_materials.material_count end) 'ascension__mora', " +
+
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Talent Book' AND qualities.quality_name = 'q1' then user_characters_materials.material_count end) 'talents__talent_book__q1', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Talent Book' AND qualities.quality_name = 'q2' then user_characters_materials.material_count end) 'talents__talent_book__q2', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Talent Book' AND qualities.quality_name = 'q3' then user_characters_materials.material_count end) 'talents__talent_book__q3', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Secondary Material' AND qualities.quality_name = 'q1' then user_characters_materials.material_count end) 'talents__secondary_material__q1', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Secondary Material' AND qualities.quality_name = 'q2' then user_characters_materials.material_count end) 'talents__secondary_material__q2', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Secondary Material' AND qualities.quality_name = 'q3' then user_characters_materials.material_count end) 'talents__secondary_material__q3', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Talent Material' then user_characters_materials.material_count end) 'talents__talent_material', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Crown' then user_characters_materials.material_count end) 'talents__crown', " +
+        "max(case when material_purposes.purpose_name = 'talents' AND material_types.type_name = 'Mora' then user_characters_materials.material_count end) 'talents__mora' " +
+
+        "FROM characters JOIN (user_characters_materials, material_types, material_purposes, material_qualities, qualities) " +
+        "ON (user_characters_materials.character_id = characters.id " +
+        "AND user_characters_materials.material_type_id = material_types.id " +
+        "AND user_characters_materials.material_purpose_id=material_purposes.id " +
+        "AND user_characters_materials.material_quality_id=material_qualities.quality_id AND material_qualities.quality_id=qualities.id) " +
+        "WHERE characters.id=19 AND user_characters_materials.user_id=2 "
+
+  router.get('/character/info/:id&:token', function (req, res, next) {
+      if(req.params.token && parseInt(req.params.token)===token)
+      {
+          db.query(
+              charInfoSql,
+              [req.params.id],
+              (error, results) => {
+                  if (error) {
+                      console.log(error);
+                      res.status(500).json({status: 'error'});
+                  } else {
+                      console.log(results);
+                      res.status(200).json(results);
+                  }
+              }
+          );
+      }
+      else {
+          res.status(200).json(-1);
+      }
+  });
+
+  router.get('/character/materials/:id&:token', function (req, res, next) {
+      if(req.params.token && parseInt(req.params.token)===token)
+      {
+          db.query(
+              userMatSql,
+              [req.params.id],
+              (error, results) => {
+                  if (error) {
+                      console.log(error);
+                      res.status(500).json({status: 'error'});
+                  } else {
+                      console.log(results);
+                      res.status(200).json(results);
+                  }
+              }
+          );
+      }
+      else {
+          res.status(200).json(-1);
+      }
   });
 
   // router.put('/event/:id', function (req, res, next) {
