@@ -10,7 +10,8 @@ const connection = mysql.createConnection({
   host     : 'localhost',
   user     : 'genshin_project',
   password : 'genshin_project',
-  database : 'genshin_project'
+  database : 'genshin_project',
+  multipleStatements: true
 });
 
 connection.connect();
